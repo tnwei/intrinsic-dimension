@@ -8,9 +8,9 @@ import torch.nn.functional as F
 class SubspaceLinear(nn.Module):
     def __init__(
         self,
+        theta,
         in_features,
         out_features,
-        theta_prime,
         bias: bool = True,  # the rest is by the numbers
         device=None,
         dtype=None,
@@ -22,36 +22,34 @@ class SubspaceLinear(nn.Module):
         # Mirror nn.Linear init
         self.in_features = in_features
         self.out_features = out_features
-        self.subspace_features = theta_prime.shape[0]  # (intrinsic_dim, 1)
-        self.theta_prime = theta_prime
+        self.id = theta.shape[0]  # (intrinsic_dim, 1)
+        self.theta = theta
 
         # Weight has shape (out_features, in_features)
-        # Therefore P x theta_prime is:
-        # (out_features, in_features, subspace_features) X (subspace_features, 1)
+        # Therefore P x theta is:
+        # (out_features, in_features, id) X (id, 1)
 
         # Create and init theta, save theta_zero
-        self.theta = torch.empty((out_features, in_features), **factory_kwargs)
-        nn.init.kaiming_uniform_(self.theta, a=math.sqrt(5))
-        self.theta_zero = self.theta.detach().clone()
+        self.weight = torch.empty((out_features, in_features), **factory_kwargs)
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        self.weight_zero = self.weight.detach().clone()
 
         # Generate projection matrix for weights
         self.proj_mat_weights = torch.empty(
-            (out_features, in_features, self.subspace_features), **factory_kwargs
+            (out_features, in_features, self.id), **factory_kwargs
         )
         nn.init.kaiming_uniform_(self.proj_mat_weights, a=math.sqrt(5))
 
         if bias:
             # Create and init bias, save bias zero
             self.bias = torch.empty(out_features, **factory_kwargs)
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.theta_zero)
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight_zero)
             bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
             nn.init.uniform_(self.bias, -bound, bound)
             self.bias_zero = self.bias.detach().clone()
 
             # Generate projection matrix for bias
-            self.proj_mat_bias = torch.empty(
-                (out_features, self.subspace_features), **factory_kwargs
-            )
+            self.proj_mat_bias = torch.empty((out_features, self.id), **factory_kwargs)
             nn.init.kaiming_uniform_(self.proj_mat_bias, a=math.sqrt(5))
 
         else:
@@ -61,18 +59,18 @@ class SubspaceLinear(nn.Module):
         # in nn.Linear:
         # return F.linear(x, self.weight, self.bias)
         # torch.mm is for matrices only! torch.matmul is the one that can do broadcasting
-        theta = self.theta_zero + torch.squeeze(
-            torch.matmul(self.proj_mat_weights, self.theta_prime), dim=-1
+        weight = self.weight_zero + torch.squeeze(
+            torch.matmul(self.proj_mat_weights, self.theta), dim=-1
         )
         bias = self.bias_zero + torch.squeeze(
-            torch.matmul(self.proj_mat_bias, self.theta_prime), dim=-1
+            torch.matmul(self.proj_mat_bias, self.theta), dim=-1
         )
-        return F.linear(x, theta, bias)
+        return F.linear(x, weight, bias)
 
     def extra_repr(self) -> str:
-        return "in_features={}, out_features={}, subspace_features={}, bias={}".format(
+        return "id={}, in_features={}, out_features={}, bias={}".format(
+            self.id,
             self.in_features,
             self.out_features,
-            self.subspace_features,
             self.bias is not None,
         )
