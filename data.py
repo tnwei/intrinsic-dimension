@@ -20,13 +20,13 @@ def load_mnist(flatten=True):
 
     train = torchvision.datasets.MNIST(
         root="~/.torchdata/",
-        download=False,
+        download=True,
         # natively stored as PIL images
         transform=dataset_transform,
     )
 
     test = torchvision.datasets.MNIST(
-        root="~/.torchdata/", download=False, train=False, transform=dataset_transform
+        root="~/.torchdata/", download=True, train=False, transform=dataset_transform
     )
 
     train_loader = DataLoader(train, batch_size=100, shuffle=True)
